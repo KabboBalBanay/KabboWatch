@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kabbo Watch</title>
+<style>
+  :root {
+    --bg: #14182a;
+    --panel: #1d2340;
+    --text: #e8ebf7;
+    --muted: #8f97b8;
+    --accent: #7fb2ff;
+    --star: #f2c14e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: #0f1322;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .logo { font-size: 1.6rem; font-weight: 700; font-style: italic; letter-spacing: 0.01em; margin: 0; }
+  .logo span { color: var(--accent); }
+  input[type="search"] {
+    flex: 1;
+    min-width: 200px;
+    max-width: 520px;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 2px solid transparent;
+    border-radius: 10px;
+  }
+  input[type="search"]:focus-visible { outline: none; border-color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  select, .btn {
+    background: var(--panel);
+    color: var(--text);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    font: inherit;
+    cursor: pointer;
+  }
+  select:focus-visible, .btn:focus-visible { outline: none; border-color: var(--accent); }
+  .btn.active { border-color: var(--accent); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); color: #0f1322; font-weight: 600; }
+  #status { color: var(--muted); margin: 0 0 1rem; min-height: 1.2em; }
+
+  /* hero */
+  #hero {
+    min-height: 340px;
+    border-radius: 14px;
+    background-size: cover;
+    background-position: center top;
+    display: flex;
+    align-items: flex-end;
+    margin-bottom: 2rem;
+    overflow: hidden;
+  }
+  #heroText { padding: 2rem; max-width: 560px; }
+  #heroTitle { font-size: 2.2rem; margin: 0 0 0.6rem; line-height: 1.1; }
+  #heroDesc {
+    margin: 0 0 1.1rem;
+    color: #cfd4ea;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* player */
+  #playerSection { display: none; margin: 0 0 2rem; }
+  #playerHead { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.8rem; }
+  #nowTitle { margin: 0; font-size: 1.3rem; }
+  #controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.8rem; }
+  #tvControls { display: none; gap: 0.6rem; }
+  #playerNote { color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem; min-height: 1.3em; }
+  #player { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 10px; background: #000; }
+
+  /* rows and results */
+  .rowTitle { font-size: 1.25rem; margin: 0 0 0.7rem; }
+  .row { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 0.7rem; margin-bottom: 1.6rem; scroll-snap-type: x proximity; }
+  .row .card { flex: 0 0 150px; scroll-snap-align: start; }
+  #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; }
+  .card {
+    background: var(--panel);
+    border: 0;
+    border-radius: 10px;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .card:hover, .card:focus-visible { outline: 2px solid var(--accent); }
+  .card img, .noimg { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; display: block; background: #2a3158; }
+  .noimg { display: grid; place-items: center; color: var(--muted); }
+  .info { padding: 0.6rem 0.7rem 0.8rem; }
+  .title { font-weight: 600; font-size: 0.95rem; }
+  .meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+  .rate { color: var(--star); margin-left: 0.4rem; }
+  [hidden] { display: none !important; }
+  @media (max-width: 600px) { #heroTitle { font-size: 1.6rem; } #hero { min-height: 260px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 class="logo">Kabbo <span>Watch</span></h1>
+  <input id="search" type="search" placeholder="Search movies and series..." autocomplete="off">
+</header>
+
+<main>
+  <section id="playerSection">
+    <div id="playerHead">
+      <h2 id="nowTitle"></h2>
+      <button class="btn" id="closePlayer" type="button">Close</button>
+    </div>
+    <div id="controls">
+      <span id="tvControls">
+        <select id="seasonSel" aria-label="Season"></select>
+        <select id="episodeSel" aria-label="Episode"></select>
+      </span>
+      <span id="servers"></span>
+      <button class="btn" id="nextServer" type="button">Try next server</button>
+      <button class="btn" id="dubBtn" type="button" aria-pressed="false">Dub</button>
+    </div>
+    <iframe id="player" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+    <div id="playerNote"></div>
+  </section>
+
+  <div id="status"></div>
+  <div id="results" hidden></div>
+
+  <div id="homeView">
+    <section id="hero" hidden>
+      <div id="heroText">
+        <h2 id="heroTitle"></h2>
+        <p id="heroDesc"></p>
+        <button class="btn primary" id="heroBtn" type="button">Watch now</button>
+      </div>
+    </section>
+    <div id="home"></div>
+  </div>
+</main>
+
+<script>
+  const IMG = "https://image.tmdb.org/t/p/w342";
+  const BACKDROP = "https://image.tmdb.org/t/p/w1280";
+  // Titles whose original audio is already this language can't have a dub into it
+  const DUB_LANG = "en";
+
+  // Rows shown on the home page
+  const ROWS = [
+    { title: "Trending this week", path: "/trending/all/week" },
+    { title: "Popular series", path: "/tv/popular", type: "tv" },
+    { title: "Popular movies", path: "/movie/popular", type: "movie" },
+    { title: "Top rated series", path: "/tv/top_rated", type: "tv" },
+    { title: "Animated series", path: "/discover/tv?with_genres=16&sort_by=popularity.desc", type: "tv" },
+    { title: "Top rated movies", path: "/movie/top_rated", type: "movie" }
+  ];
+
+  // Normal servers, tried in this order
+  const PROVIDERS = [
+    {
+      name: "VidCore",
+      movie: id => `https://vidcore.org/embed/movie/${id}`,
+      tv: (id, s, e) => `https://vidcore.org/embed/tv/${id}/${s}/${e}` // check VidCore docs
+    },
+    {
+      name: "VidSrc",
+      movie: id => `https://vidsrc.to/embed/movie/${id}`,
+      tv: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+    },
+    {
+      name: "VidLink",
+      movie: id => `https://vidlink.pro/movie/${id}`,
+      tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`
+    }
+  ];
+
+  // Servers used when Dub is on. These URL formats are from memory, so check them
+  // against each site's own docs if one doesn't load.
+  const DUB_PROVIDERS = [
+    {
+      name: "2Embed",
+      movie: id => `https://www.2embed.cc/embed/${id}`,
+      tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
+    },
+    {
+      name: "SuperEmbed",
+      movie: id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+      tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
+    }
+  ];
+  const LOAD_TIMEOUT_MS = 10000;
+
+  const $ = id => document.getElementById(id);
+  const input = $("search"), statusEl = $("status"), resultsEl = $("results");
+  const homeView = $("homeView"), homeEl = $("home"), heroEl = $("hero");
+  const playerSection = $("playerSection"), player = $("player"), nowTitle = $("nowTitle");
+  const tvControls = $("tvControls"), seasonSel = $("seasonSel"), episodeSel = $("episodeSel");
+  const serversEl = $("servers"), dubBtn = $("dubBtn"), noteEl = $("playerNote");
+
+  let current = null;      // { type, id, season, episode, lang }
+  let seasons = [];        // [{ season_number, episode_count }]
+  let providerIdx = 0;
+  let autoTries = 0;
+  let dubOn = false;
+  let loadTimer;
+
+  const activeList = () => (dubOn ? DUB_PROVIDERS : PROVIDERS);
+
+  async function tmdb(path) {
+  const res = await fetch("/api" + path);
+  if (!res.ok) throw new Error("Request failed (" + res.status + ")");
+  return res.json();
+}
+
+  // Returns the two things you need: type ("movie" or "series") and id
+  function getMediaInfo(item) {
+    return {
+      type: item.media_type === "tv" ? "series" : "movie",
+      id: item.id
+    };
+  }
+
+  // ---------- Dub ----------
+  // Whether a title really has a dub can't be detected from outside the player,
+  // so Dub only switches to the dub servers. It is greyed out when the title is
+  // already in the dub language.
+  function dubBlockedReason() {
+    return current && current.lang === DUB_LANG
+      ? "This title's original audio is already in this language."
+      : "";
+  }
+
+  function updateDubButton() {
+    const reason = dubBlockedReason();
+    dubBtn.disabled = !!reason;
+    dubBtn.title = reason || "Switch to the dub servers (2Embed, SuperEmbed)";
+    dubBtn.classList.toggle("active", dubOn);
+    dubBtn.setAttribute("aria-pressed", String(dubOn));
+  }
+
+  dubBtn.addEventListener("click", () => {
+    dubOn = !dubOn;
+    providerIdx = 0;
+    autoTries = 0;
+    loadPlayer();
+  });
+
+  // ---------- Player ----------
+  function buildUrl() {
+    const p = activeList()[providerIdx];
+    return current.type === "movie"
+      ? p.movie(current.id)
+      : p.tv(current.id, current.season, current.episode);
+  }
+
+  function renderServers() {
+    serversEl.innerHTML = "";
+    activeList().forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn" + (i === providerIdx ? " active" : "");
+      b.textContent = p.name;
+      b.addEventListener("click", () => { providerIdx = i; autoTries = 0; loadPlayer(); });
+      serversEl.appendChild(b);
+    });
+    updateDubButton();
+  }
+
+  function loadPlayer() {
+    clearTimeout(loadTimer);
+    const list = activeList();
+    renderServers();
+    player.src = buildUrl();
+    noteEl.textContent = `Loading from ${list[providerIdx].name}...`;
+    // If the server page never finishes loading, move to the next one automatically
+    loadTimer = setTimeout(() => {
+      if (autoTries < list.length - 1) {
+        autoTries++;
+        providerIdx = (providerIdx + 1) % list.length;
+        loadPlayer();
+      } else {
+        noteEl.textContent = "No server responded. Try again later.";
+      }
+    }, LOAD_TIMEOUT_MS);
+  }
+
+  player.addEventListener("load", () => {
+    clearTimeout(loadTimer);
+    if (!current) return;
+    const name = activeList()[providerIdx].name;
+    noteEl.textContent = dubOn
+      ? `Playing from ${name}. Open the player's server menu and look for a Dub option. If there isn't one, try the other dub server.`
+      : `Playing from ${name}. If the video says it failed, press "Try next server".`;
+  });
+
+  $("nextServer").addEventListener("click", () => {
+    providerIdx = (providerIdx + 1) % activeList().length;
+    autoTries = 0;
+    loadPlayer();
+  });
+
+  $("closePlayer").addEventListener("click", () => {
+    clearTimeout(loadTimer);
+    player.src = "about:blank";
+    playerSection.style.display = "none";
+    current = null;
+  });
+
+  // ---------- Season / episode ----------
+  function fillEpisodes() {
+    const s = seasons.find(x => x.season_number === current.season);
+    episodeSel.innerHTML = "";
+    for (let e = 1; e <= (s ? s.episode_count : 1); e++) {
+      const o = document.createElement("option");
+      o.value = e;
+      o.textContent = "Episode " + e;
+      episodeSel.appendChild(o);
+    }
+    episodeSel.value = current.episode;
+  }
+
+  async function loadSeasons(id) {
+    const data = await tmdb(`/tv/${id}`);
+    // season 0 is "Specials", so skip it
+    seasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
+    seasonSel.innerHTML = "";
+    seasons.forEach(s => {
+      const o = document.createElement("option");
+      o.value = s.season_number;
+      o.textContent = "Season " + s.season_number;
+      seasonSel.appendChild(o);
+    });
+    current.season = seasons.length ? seasons[0].season_number : 1;
+    current.episode = 1;
+    seasonSel.value = current.season;
+    fillEpisodes();
+  }
+
+  seasonSel.addEventListener("change", () => {
+    current.season = Number(seasonSel.value);
+    current.episode = 1;
+    fillEpisodes();
+    autoTries = 0;
+    loadPlayer();
+  });
+  episodeSel.addEventListener("change", () => {
+    current.episode = Number(episodeSel.value);
+    autoTries = 0;
+    loadPlayer();
+  });
+
+  // ---------- Selecting a title ----------
+  async function onSelect(item) {
+    const info = getMediaInfo(item);
+    console.log(info);
+
+    current = { type: info.type, id: info.id, season: 1, episode: 1, lang: item.original_language };
+    providerIdx = 0;
+    autoTries = 0;
+    dubOn = false;
+    nowTitle.textContent = item.title || item.name;
+    playerSection.style.display = "block";
+    tvControls.style.display = info.type === "series" ? "inline-flex" : "none";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    if (info.type === "series") {
+      try { await loadSeasons(info.id); }
+      catch (err) { noteEl.textContent = err.message; }
+    }
+    loadPlayer();
+  }
+
+  // ---------- Cards ----------
+  function makeCard(item) {
+    const date = item.release_date || item.first_air_date || "";
+    const card = document.createElement("button");
+    card.className = "card";
+    card.innerHTML = `
+      ${item.poster_path
+        ? `<img src="${IMG + item.poster_path}" alt="" loading="lazy">`
+        : `<div class="noimg">No poster</div>`}
+      <div class="info">
+        <div class="title"></div>
+        <div class="meta">${item.media_type === "tv" ? "Series" : "Movie"}${date ? ", " + date.slice(0, 4) : ""}${item.vote_average ? `<span class="rate">&#9733; ${item.vote_average.toFixed(1)}</span>` : ""}</div>
+      </div>`;
+    card.querySelector(".title").textContent = item.title || item.name;
+    card.addEventListener("click", () => onSelect(item));
+    return card;
+  }
+
+  // ---------- Home page ----------
+  function setHero(item) {
+    if (!item) return;
+    heroEl.hidden = false;
+    heroEl.style.backgroundImage =
+      `linear-gradient(90deg, rgba(15,19,34,0.95) 0%, rgba(15,19,34,0.5) 60%, rgba(15,19,34,0.1) 100%), url(${BACKDROP + item.backdrop_path})`;
+    $("heroTitle").textContent = item.title || item.name;
+    $("heroDesc").textContent = item.overview || "";
+    $("heroBtn").onclick = () => onSelect(item);
+  }
+
+  function loadHome() {
+    ROWS.forEach(async (row, i) => {
+      // Create the section first so rows keep their order while loading
+      const sec = document.createElement("section");
+      sec.innerHTML = `<h2 class="rowTitle"></h2><div class="row"></div>`;
+      sec.querySelector(".rowTitle").textContent = row.title;
+      const scroller = sec.querySelector(".row");
+      homeEl.appendChild(sec);
+      try {
+        const data = await tmdb(row.path);
+        const items = data.results
+          .map(r => ({ ...r, media_type: r.media_type || row.type }))
+          .filter(r => (r.media_type === "movie" || r.media_type === "tv") && r.poster_path);
+        items.forEach(it => scroller.appendChild(makeCard(it)));
+        if (i === 0) setHero(items.find(x => x.backdrop_path));
+      } catch (err) {
+        sec.remove();
+        if (i === 0) statusEl.textContent = "Error: " + err.message;
+      }
+    });
+  }
+
+  // ---------- Search ----------
+  async function search(query) {
+    statusEl.textContent = "Searching...";
+    try {
+      const data = await tmdb(`/search/multi?query=${encodeURIComponent(query)}`);
+      // multi search also returns people, so keep only movies and series
+      const items = data.results.filter(r => r.media_type === "movie" || r.media_type === "tv");
+      resultsEl.innerHTML = "";
+      items.forEach(it => resultsEl.appendChild(makeCard(it)));
+      resultsEl.hidden = false;
+      homeView.hidden = true;
+      statusEl.textContent = items.length ? "" : "No movies or series found.";
+    } catch (err) {
+      statusEl.textContent = "Error: " + err.message;
+    }
+  }
+
+  let timer;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) {
+      resultsEl.hidden = true;
+      resultsEl.innerHTML = "";
+      homeView.hidden = false;
+      statusEl.textContent = "";
+      return;
+    }
+    timer = setTimeout(() => search(q), 400);
+  });
+
+  loadHome();
+</script>
+</body>
+</html>
