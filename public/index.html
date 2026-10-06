@@ -58,7 +58,6 @@
   }
   select:focus-visible, .btn:focus-visible { outline: none; border-color: var(--accent); }
   .btn.active { border-color: var(--accent); }
-  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .btn.primary { background: var(--accent); color: #0f1322; font-weight: 600; }
   #status { color: var(--muted); margin: 0 0 1rem; min-height: 1.2em; }
 
@@ -148,7 +147,6 @@
       </span>
       <span id="servers"></span>
       <button class="btn" id="nextServer" type="button">Try next server</button>
-      <button class="btn" id="dubBtn" type="button" aria-pressed="false">Dub</button>
     </div>
     <iframe id="player" allowfullscreen allow="autoplay; encrypted-media"></iframe>
     <div id="playerNote"></div>
@@ -180,8 +178,6 @@
 <script>
   const IMG = "https://image.tmdb.org/t/p/w342";
   const BACKDROP = "https://image.tmdb.org/t/p/w1280";
-  // Titles whose original audio is already this language can't have a dub into it
-  const DUB_LANG = "en";
 
   // Rows shown on the home page
   const ROWS = [
@@ -193,8 +189,20 @@
     { title: "Top rated movies", path: "/movie/top_rated", type: "movie" }
   ];
 
-  // Normal servers, tried in this order
+  // Servers, tried in this order. If one doesn't load in 10 seconds the next one is tried.
+  // The 2Embed and SuperEmbed URL formats are from memory, so check them against
+  // each site's own docs if one never loads.
   const PROVIDERS = [
+    {
+      name: "2Embed",
+      movie: id => `https://www.2embed.cc/embed/${id}`,
+      tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
+    },
+    {
+      name: "SuperEmbed",
+      movie: id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+      tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
+    },
     {
       name: "VidCore",
       movie: id => `https://vidcore.org/embed/movie/${id}`,
@@ -211,21 +219,6 @@
       tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`
     }
   ];
-
-  // Servers used when Dub is on. These URL formats are from memory, so check them
-  // against each site's own docs if one doesn't load.
-  const DUB_PROVIDERS = [
-    {
-      name: "2Embed",
-      movie: id => `https://www.2embed.cc/embed/${id}`,
-      tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
-    },
-    {
-      name: "SuperEmbed",
-      movie: id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-      tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
-    }
-  ];
   const LOAD_TIMEOUT_MS = 10000;
 
   const $ = id => document.getElementById(id);
@@ -233,22 +226,19 @@
   const homeView = $("homeView"), homeEl = $("home"), heroEl = $("hero");
   const playerSection = $("playerSection"), player = $("player"), nowTitle = $("nowTitle");
   const tvControls = $("tvControls"), seasonSel = $("seasonSel"), episodeSel = $("episodeSel");
-  const serversEl = $("servers"), dubBtn = $("dubBtn"), noteEl = $("playerNote");
+  const serversEl = $("servers"), noteEl = $("playerNote");
 
-  let current = null;      // { type, id, season, episode, lang }
+  let current = null;      // { type, id, season, episode }
   let seasons = [];        // [{ season_number, episode_count }]
   let providerIdx = 0;
   let autoTries = 0;
-  let dubOn = false;
   let loadTimer;
 
-  const activeList = () => (dubOn ? DUB_PROVIDERS : PROVIDERS);
-
   async function tmdb(path) {
-  const res = await fetch("/api" + path);
-  if (!res.ok) throw new Error("Request failed (" + res.status + ")");
-  return res.json();
-}
+    const res = await fetch("/api" + path);
+    if (!res.ok) throw new Error("Request failed (" + res.status + ")");
+    return res.json();
+  }
 
   // Returns the two things you need: type ("movie" or "series") and id
   function getMediaInfo(item) {
@@ -258,34 +248,9 @@
     };
   }
 
-  // ---------- Dub ----------
-  // Whether a title really has a dub can't be detected from outside the player,
-  // so Dub only switches to the dub servers. It is greyed out when the title is
-  // already in the dub language.
-  function dubBlockedReason() {
-    return current && current.lang === DUB_LANG
-      ? "This title's original audio is already in this language."
-      : "";
-  }
-
-  function updateDubButton() {
-    const reason = dubBlockedReason();
-    dubBtn.disabled = !!reason;
-    dubBtn.title = reason || "Switch to the dub servers (2Embed, SuperEmbed)";
-    dubBtn.classList.toggle("active", dubOn);
-    dubBtn.setAttribute("aria-pressed", String(dubOn));
-  }
-
-  dubBtn.addEventListener("click", () => {
-    dubOn = !dubOn;
-    providerIdx = 0;
-    autoTries = 0;
-    loadPlayer();
-  });
-
   // ---------- Player ----------
   function buildUrl() {
-    const p = activeList()[providerIdx];
+    const p = PROVIDERS[providerIdx];
     return current.type === "movie"
       ? p.movie(current.id)
       : p.tv(current.id, current.season, current.episode);
@@ -293,7 +258,7 @@
 
   function renderServers() {
     serversEl.innerHTML = "";
-    activeList().forEach((p, i) => {
+    PROVIDERS.forEach((p, i) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "btn" + (i === providerIdx ? " active" : "");
@@ -301,20 +266,18 @@
       b.addEventListener("click", () => { providerIdx = i; autoTries = 0; loadPlayer(); });
       serversEl.appendChild(b);
     });
-    updateDubButton();
   }
 
   function loadPlayer() {
     clearTimeout(loadTimer);
-    const list = activeList();
     renderServers();
     player.src = buildUrl();
-    noteEl.textContent = `Loading from ${list[providerIdx].name}...`;
+    noteEl.textContent = `Loading from ${PROVIDERS[providerIdx].name}...`;
     // If the server page never finishes loading, move to the next one automatically
     loadTimer = setTimeout(() => {
-      if (autoTries < list.length - 1) {
+      if (autoTries < PROVIDERS.length - 1) {
         autoTries++;
-        providerIdx = (providerIdx + 1) % list.length;
+        providerIdx = (providerIdx + 1) % PROVIDERS.length;
         loadPlayer();
       } else {
         noteEl.textContent = "No server responded. Try again later.";
@@ -325,14 +288,11 @@
   player.addEventListener("load", () => {
     clearTimeout(loadTimer);
     if (!current) return;
-    const name = activeList()[providerIdx].name;
-    noteEl.textContent = dubOn
-      ? `Playing from ${name}. Open the player's server menu and look for a Dub option. If there isn't one, try the other dub server.`
-      : `Playing from ${name}. If the video says it failed, press "Try next server".`;
+    noteEl.textContent = `Playing from ${PROVIDERS[providerIdx].name}. If the video fails or has no dub, press "Try next server". Some servers also have audio options inside the player.`;
   });
 
   $("nextServer").addEventListener("click", () => {
-    providerIdx = (providerIdx + 1) % activeList().length;
+    providerIdx = (providerIdx + 1) % PROVIDERS.length;
     autoTries = 0;
     loadPlayer();
   });
@@ -392,10 +352,9 @@
     const info = getMediaInfo(item);
     console.log(info);
 
-    current = { type: info.type, id: info.id, season: 1, episode: 1, lang: item.original_language };
+    current = { type: info.type, id: info.id, season: 1, episode: 1 };
     providerIdx = 0;
     autoTries = 0;
-    dubOn = false;
     nowTitle.textContent = item.title || item.name;
     playerSection.style.display = "block";
     tvControls.style.display = info.type === "series" ? "inline-flex" : "none";
